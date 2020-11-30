@@ -6,6 +6,12 @@ LOG_LEVEL: WARNING
 
 ENABLE_UI: False
 
+# An RFC1738 uri used to connect to a database.
+# The naming convention is enforced by the Flask-SQLAlchemy module.
+# See https://flask-sqlalchemy.palletsprojects.com/en/2.x/config/
+SQLALCHEMY_DATABASE_URI: 'sqlite:///:memory:'
+SQLALCHEMY_TRACK_MODIFICATIONS: False
+
 EARLIEST_TS: 'YYYY-MM-DDTHH:MM:SSZ'
 MOST_RECENT_REV_TS: 'YYYY-MM-DDTHH:MM:SSZ'
 

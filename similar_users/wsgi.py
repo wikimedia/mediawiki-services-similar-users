@@ -15,12 +15,12 @@ from flask_basicauth import BasicAuth
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
 from sklearn.metrics.pairwise import cosine_similarity
+from models import database, UserMetadata, Coedit, Temporal
 
 app = Flask(__name__)
 
 metrics = PrometheusMetrics(app)
 basic_auth = BasicAuth(app)
-
 # Enable CORS for API endpoints
 cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
@@ -57,8 +57,15 @@ def index():
 
 @app.route("/similarusers", methods=["GET"])
 @basic_auth.required
-@metrics.counter('similar_users', 'Number of calls to similarusers',
-                 labels={'similar_count': lambda r: len(r.get_json()["results"]) if "results" in r.get_json() else 0})
+@metrics.counter(
+    "similar_users",
+    "Number of calls to similarusers",
+    labels={
+        "similar_count": lambda r: len(r.get_json()["results"])
+        if "results" in r.get_json()
+        else 0
+    },
+)
 def get_similar_users():
     """For a given user, find the k-most-similar users based on edit overlap.
 
@@ -72,6 +79,12 @@ def get_similar_users():
         app.logger.error("Got error when trying to validate API arguments: %s", error)
         return jsonify({"Error": error})
 
+    try:
+        lookup_user(user_text)
+    except Exception as e:
+        app.logger.error(f"Unable to load data for user {user_text}: {e}")
+        return jsonify({"Error": e})
+
     edits = get_additional_edits(
         user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
     )
@@ -84,16 +97,16 @@ def get_similar_users():
     last_edit = None
     app.logger.info(str(USER_METADATA[user_text]))
     if USER_METADATA[user_text]["oldest_edit"]:
-        oldest_edit = datetime.strptime(
-            USER_METADATA[user_text]["oldest_edit"], TIME_FORMAT
-        ).strftime(READABLE_TIME_FORMAT)
+        oldest_edit = USER_METADATA[user_text]["oldest_edit"].strftime(
+            READABLE_TIME_FORMAT
+        )
     else:
         app.logger.debug("Didn't get an oldest_edit for user %s", user_text)
 
     if USER_METADATA[user_text]["most_recent_edit"]:
-        last_edit = datetime.strptime(
-            USER_METADATA[user_text]["most_recent_edit"], TIME_FORMAT
-        ).strftime(READABLE_TIME_FORMAT)
+        last_edit = USER_METADATA[user_text]["most_recent_edit"].strftime(
+            READABLE_TIME_FORMAT
+        )
     else:
         app.logger.debug("Didn't get an most_recent_edit for user %s", user_text)
 
@@ -107,12 +120,16 @@ def get_similar_users():
             for u in overlapping_users
         ],
     }
-    logging.debug("Got %d similarity results for user %s", len(result["results"]), user_text)
+    app.logger.debug(
+        "Got %d similarity results for user %s", len(result["results"]), user_text
+    )
     return jsonify(result)
+
 
 @app.route("/healthz", methods=["GET"])
 def healthz():
     return "similarusers is running"
+
 
 def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followup):
     """Build a single similar-user API response"""
@@ -182,9 +199,7 @@ def get_additional_edits(
 ):
     """Gather edits made by a user since last data dumps -- e.g., October edits if dumps end of September dumps used."""
     if last_edit_timestamp:
-        arvstart = datetime.strptime(last_edit_timestamp, TIME_FORMAT) + timedelta(
-            seconds=1
-        )
+        arvstart = last_edit_timestamp + timedelta(seconds=1)
     else:
         # TODO move this timestamp out of configuration - either automate it
         # based on current date or query it from a datastore.
@@ -228,11 +243,11 @@ def get_additional_edits(
                     update_temporal_data(user_text, dtts.day, dtts.hour, 1)
                     new_edits += 1
                     if min_timestamp is None:
-                        min_timestamp = ts
-                        max_timestamp = ts
+                        min_timestamp = dtts
+                        max_timestamp = dtts
                     else:
-                        max_timestamp = max(max_timestamp, ts)
-                        min_timestamp = min(min_timestamp, ts)
+                        max_timestamp = max(max_timestamp, dtts)
+                        min_timestamp = min(min_timestamp, dtts)
             if len(pageids) > limit:
                 break
         # Update USER_METADATA so future calls don't need to repeat this process
@@ -483,14 +498,20 @@ def load_coedit_data(resource_dir):
     with open(os.path.join(resource_dir, "coedit_counts.tsv"), "r") as fin:
         assert next(fin).strip().split("\t") == expected_header
         for line_str in fin:
-            line = line_str.strip().split("\t")
-            user = line[0]
-            neighbor = line[1]
-            overlap_count = int(line[2])
-            if user not in COEDIT_DATA:
-                COEDIT_DATA[user] = []
-            COEDIT_DATA[user].append((neighbor, overlap_count))
-    return COEDIT_DATA
+            try:
+                line = line_str.strip().split("\t")
+                user_text = line[0]
+                neighbor = line[1]
+                overlap_count = int(line[2])
+
+                coedit = Coedit(
+                    user_text=user_text, neighbor=neighbor, overlap_count=overlap_count
+                )
+            except Exception as e:
+                app.logger.error(f"Failed to parse record {line_str}: {e}")
+            else:
+                database.session.add(coedit)
+        database.session.commit()
 
 
 def load_temporal_data(resource_dir):
@@ -500,14 +521,25 @@ def load_temporal_data(resource_dir):
     with open(os.path.join(resource_dir, "temporal.tsv"), "r") as fin:
         assert next(fin).strip().split("\t") == expected_header
         for line_str in fin:
-            line = line_str.strip().split("\t")
-            user_text = line[0]
-            day_of_week = int(line[1]) - 1  # 0 Sunday - 6 Saturday
-            hour_of_day = int(line[2])  # 0 - 23
-            num_edits = int(line[3])
-            if user_text not in TEMPORAL_DATA:
-                TEMPORAL_DATA[user_text] = {"d": [0] * 7, "h": [0] * 24}
-            update_temporal_data(user_text, day_of_week, hour_of_day, num_edits)
+            try:
+                line = line_str.strip().split("\t")
+                user_text = line[0]
+                day_of_week = int(line[1]) - 1  # 0 Sunday - 6 Saturday
+                hour_of_day = int(line[2])  # 0 - 23
+                num_edits = int(line[3])
+
+                temporal = Temporal(
+                    user_text=user_text,
+                    d=day_of_week,
+                    h=hour_of_day,
+                    num_edits=num_edits,
+                )
+
+            except Exception as e:
+                app.logger.error(f"Failed to parse record {line_str}: {e}")
+            else:
+                database.session.add(temporal)
+        database.session.commit()
 
 
 def update_temporal_data(user_text, day, hour, num_edits):
@@ -536,25 +568,53 @@ def load_metadata(resource_dir):
         "oldest_edit",
     ]
     with open(os.path.join(resource_dir, "metadata.tsv"), "r") as fin:
+
         assert next(fin).strip().split("\t") == expected_header
         for line_str in fin:
             # TODO use csv library here?
-            line = line_str.strip().split("\t")
-            user = line[0]
-            USER_METADATA[user] = {
-                "is_anon": bool(distutils.util.strtobool(line[1])),
-                "num_edits": int(line[2]),
-                "num_pages": int(line[3]),
-                "most_recent_edit": line[4],
-                "oldest_edit": line[5],
-            }
+            try:
+                line = line_str.strip().split("\t")
+                user_text = line[0]
+                user = UserMetadata(
+                    user_text=user_text,
+                    is_anon=bool(distutils.util.strtobool(line[1])),
+                    num_edits=int(line[2]),
+                    num_pages=int(line[3]),
+                    most_recent_edit=datetime.strptime(line[4], TIME_FORMAT),
+                    oldest_edit=datetime.strptime(line[5], TIME_FORMAT),
+                )
+            except Exception as e:
+                app.looger.error(f"Failed to parse record {line_str}: {e}")
+            else:
+                database.session.add(user)
+        database.session.commit()
 
 
-def load_data(resource_dir):
-    """Load in necessary data for tool."""
-    load_coedit_data(resource_dir)
-    load_temporal_data(resource_dir)
-    load_metadata(resource_dir)
+def lookup_user(user_text):
+    """
+    Lookup user data from the database, and populate session globals.
+
+    :param user_text: the username we want to analyze.
+    :return:
+    """
+    metadata = UserMetadata.query.filter_by(user_text=user_text).first()
+
+    USER_METADATA[user_text] = metadata.__dict__ if metadata else {}
+    COEDIT_DATA[user_text] = [
+        (row.neighbor, row.overlap_count)
+        for row in Coedit.query.filter_by(user_text=user_text).all()
+    ]
+    TEMPORAL_DATA[user_text] = {"d": [0] * 7, "h": [0] * 24}
+
+    temporal = Temporal.query.filter_by(user_text=user_text).first()
+    if temporal:
+        update_temporal_data(user_text, temporal.d, temporal.h, temporal.num_edits)
+
+
+def load_data(resourcedir):
+    load_metadata(resourcedir)
+    load_coedit_data(resourcedir)
+    load_temporal_data(resourcedir)
 
 
 def parse_args():
@@ -575,7 +635,8 @@ def parse_args():
         "--resourcedir",
         "-r",
         action="store",
-        help="Path to the service configuration file.",
+        help="Path to the service input files. When specified, data will be loaded "
+        "into a database (default: in memory sqlite) ",
         type=pathlib.Path,
         default=os.path.join(os.path.dirname(__file__), "resources"),
     )
@@ -591,7 +652,6 @@ def parse_args():
 
 
 def main():
-
     args = parse_args()
     # TODO move app creation to its own function rather than using it as a
     # global
@@ -600,7 +660,18 @@ def main():
 
     logging.basicConfig(level=logging.getLevelName(config_yaml["LOG_LEVEL"]))
 
-    load_data(args.resourcedir)
+    database.init_app(app)
+    if "resourcedir" in args:
+        with app.test_request_context():
+            # TODO(gmodena, 2020-11-27): create (if not exists) a database and populate it at startup.
+            # Used for development; this logic will be moved to a migration/manager module.
+            # To do it properly, we should refactor app creation to a factory,
+            # rather than using a global object.
+            try:
+                database.create_all()
+                load_data(args.resourcedir)
+            except Exception as e:
+                app.logger.error(f"Failed to load input data: {e}")
     # Only use LISTEN_IP to configure docker port exposure - not for serving elsewhere.
     app.run(app.config["LISTEN_IP"] if "LISTEN_IP" in app.config else "127.0.0.1")
 
