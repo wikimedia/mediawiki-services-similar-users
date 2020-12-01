@@ -14,6 +14,8 @@ from flask import Flask, request, jsonify, render_template, abort
 from flask_basicauth import BasicAuth
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from sklearn.metrics.pairwise import cosine_similarity
 from .models import database, UserMetadata, Coedit, Temporal
 
@@ -62,11 +64,11 @@ def index():
     "Number of calls to similarusers",
     labels={
         "similar_count": lambda r: len(r.get_json()["results"])
-        if "results" in r.get_json()
+        if r.get_json() and "results" in r.get_json()
         else 0
     },
 )
-def get_similar_users():
+def get_similar_users(lang="en"):
     """For a given user, find the k-most-similar users based on edit overlap.
 
     Expected parameters:
@@ -74,7 +76,7 @@ def get_similar_users():
     * k (int): how many similar users to return at maximum?
     * followup (bool): include additional tool links in API response for follow-up on data
     """
-    user_text, num_similar, followup, error = validate_api_args()
+    user_text, num_similar, followup, error = validate_api_args(lang)
     if error is not None:
         app.logger.error("Got error when trying to validate API arguments: %s", error)
         return jsonify({"Error": error})
@@ -85,9 +87,14 @@ def get_similar_users():
         app.logger.error(f"Unable to load data for user {user_text}: {e}")
         return jsonify({"Error": e})
 
-    edits = get_additional_edits(
-        user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
-    )
+    try:
+        edits = get_additional_edits(
+            user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
+        )
+    except Exception as exc:
+        app.logger.error("Failed to get additional edits for user %s: %s", user_text, exc)
+        return jsonify({"Error": f"Failed to get additional edits for user {user_text}"})
+
     app.logger.debug("Got %d edits for user %s", len(edits) if edits else 0, user_text)
     if edits is not None:
         update_coedit_data(user_text, edits, app.config["EDIT_WINDOW"])
@@ -129,6 +136,21 @@ def get_similar_users():
 @app.route("/healthz", methods=["GET"])
 def healthz():
     return "similarusers is running"
+
+
+def make_mwapi_session(lang, user_agent, retries):
+    session = mwapi.Session(
+        "https://{0}.wikipedia.org".format(lang), user_agent=user_agent
+    )
+    if retries:
+        retry_strategy = Retry(
+            total=retries,
+        )
+        session.session.mount(
+            "https://{0}.wikipedia.org".format(lang),
+            HTTPAdapter(max_retries=retry_strategy),
+        )
+    return session
 
 
 def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followup):
@@ -205,8 +227,8 @@ def get_additional_edits(
         # based on current date or query it from a datastore.
         arvstart = app.config["MOST_RECENT_REV_TS"]
     if session is None:
-        session = mwapi.Session(
-            "https://{0}.wikipedia.org".format(lang), user_agent=app.config["CUSTOM_UA"]
+        session = make_mwapi_session(
+            lang, app.config["CUSTOM_UA"], app.config["MWAPI_RETRIES"]
         )
 
     # generate list of all revisions since user's last recorded revision
@@ -281,8 +303,8 @@ def update_coedit_data(user_text, new_edits, k, lang="en", session=None, limit=2
     """
     most_similar_users = COEDIT_DATA[user_text]
     if session is None:
-        session = mwapi.Session(
-            "https://{0}.wikipedia.org".format(lang), user_agent=app.config["CUSTOM_UA"]
+        session = make_mwapi_session(
+            lang, app.config["CUSTOM_UA"], app.config["MWAPI_RETRIES"]
         )
 
     overlapping_users = {}
@@ -367,7 +389,7 @@ def chunkify(l, k=50):
         yield l[i : i + k]
 
 
-def check_user_text(user_text):
+def check_user_text(user_text, lang="en"):
     # already in dataset -- meets valid user criteria
     if user_text in USER_METADATA:
         return None
@@ -376,9 +398,10 @@ def check_user_text(user_text):
     # this could be because they have only contributed since the date of the dumps
     # but have to be careful to filter out bots still
     # unfortunately no one API call can give: is user/anon but not bot
-    session = mwapi.Session(
-        "https://en.wikipedia.org", user_agent=app.config["CUSTOM_UA"]
+    session = make_mwapi_session(
+        lang, app.config["CUSTOM_UA"], app.config["MWAPI_RETRIES"]
     )
+
     # check if user has made contributions in 2020
     result = session.get(
         action="query",
@@ -462,7 +485,7 @@ def check_user_text(user_text):
     )
 
 
-def validate_api_args():
+def validate_api_args(lang):
     """Validate API arguments for model. Return error if missing or user-text does not exist or not relevant."""
     user_text = request.args.get("usertext")
     num_similar = request.args.get("k", DEFAULT_K)  # must be between 1 and 250
@@ -485,7 +508,7 @@ def validate_api_args():
     if user_text:
         user_text = user_text.replace(" ", "_")
         user_text = user_text[0].upper() + user_text[1:]
-        error = check_user_text(user_text)
+        error = check_user_text(user_text, lang)
     else:
         error = 'missing user_text -- e.g., "Isaac (WMF)" for https://en.wikipedia.org/wiki/User:Isaac_(WMF)'
     return user_text, num_similar, followup, error
@@ -662,6 +685,7 @@ def configure_app(args=None):
     # TODO move app creation to its own function rather than using it as a
     # global
     with open(config_path) as config_f:
+        # TODO load defaults
         config_yaml = yaml.safe_load(config_f)
     app.config.update(config_yaml)
 
