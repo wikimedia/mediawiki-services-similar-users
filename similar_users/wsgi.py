@@ -15,7 +15,7 @@ from flask_basicauth import BasicAuth
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
 from sklearn.metrics.pairwise import cosine_similarity
-from models import database, UserMetadata, Coedit, Temporal
+from .models import database, UserMetadata, Coedit, Temporal
 
 app = Flask(__name__)
 
@@ -651,17 +651,24 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
+def configure_app(args=None):
+    if args:
+        config_path = args.config
+        resource_path = args.resourcedir
+    else:
+        config_path = os.environ["CONFIG_PATH"]
+        resource_path = os.environ["RESOURCE_PATH"]
+
     # TODO move app creation to its own function rather than using it as a
     # global
-    config_yaml = yaml.safe_load(open(args.config))
+    with open(config_path) as config_f:
+        config_yaml = yaml.safe_load(config_f)
     app.config.update(config_yaml)
 
     logging.basicConfig(level=logging.getLevelName(config_yaml["LOG_LEVEL"]))
 
     database.init_app(app)
-    if "resourcedir" in args:
+    if args and "resourcedir" in args:
         with app.test_request_context():
             # TODO(gmodena, 2020-11-27): create (if not exists) a database and populate it at startup.
             # Used for development; this logic will be moved to a migration/manager module.
@@ -672,9 +679,17 @@ def main():
                 load_data(args.resourcedir)
             except Exception as e:
                 app.logger.error(f"Failed to load input data: {e}")
-    # Only use LISTEN_IP to configure docker port exposure - not for serving elsewhere.
-    app.run(app.config["LISTEN_IP"] if "LISTEN_IP" in app.config else "127.0.0.1")
+
+def main(args=None):
+
+    configure_app(args)
+    if args:
+        # Only use LISTEN_IP to configure docker port exposure - not for serving elsewhere.
+        app.run(app.config["LISTEN_IP"] if "LISTEN_IP" in app.config else "127.0.0.1")
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)
+else:
+    configure_app()

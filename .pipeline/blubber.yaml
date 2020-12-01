@@ -3,7 +3,9 @@ base: docker-registry.wikimedia.org/python3
 lives:
   in: /srv/service
 runs:
-  environment: { APP_BASE_PATH: /srv/service }
+  environment:
+    APP_BASE_PATH: /srv/service
+
 python:
   version: python3
 
@@ -18,7 +20,11 @@ variants:
     runs: { insecurely: true }
   development:
     includes: [build]
-    entrypoint: [python3, similar_users/wsgi.py]
+    runs:
+      environment:
+        CONFIG_PATH: similar_users/flask_config.yaml
+        RESOURCE_PATH: similar_users/resources/
+    entrypoint: [gunicorn, "similar_users.wsgi:app"]
   test:
     includes: [build]
     entrypoint: [make, test]

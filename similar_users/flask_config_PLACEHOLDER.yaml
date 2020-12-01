@@ -1,8 +1,8 @@
 # User-agent used for querying Wikidata API
-CUSTOM_UA: "spd (cloud-vps) -- isaac@wikimedia.org"
+CUSTOM_UA: "Wikimedia similar-users service"
 
 DEBUG: False
-LOG_LEVEL: WARNING
+LOG_LEVEL: DEBUG
 
 ENABLE_UI: False
 
@@ -12,12 +12,12 @@ ENABLE_UI: False
 SQLALCHEMY_DATABASE_URI: 'sqlite:///:memory:'
 SQLALCHEMY_TRACK_MODIFICATIONS: False
 
-EARLIEST_TS: 'YYYY-MM-DDTHH:MM:SSZ'
-MOST_RECENT_REV_TS: 'YYYY-MM-DDTHH:MM:SSZ'
+EARLIEST_TS: '2020-01-01T00:00:00Z'
+MOST_RECENT_REV_TS: '2020-09-30T23:59:59Z'
 
-TEMPORAL_OFFSET: '<tuple of -k through k hour offset -- e.g., (-1, 0, 1)>'
-NAMESPACES: '<list of relevant namespace numbers -- e.g., [0] for just main namespace>'
-EDIT_WINDOW: 'maximum # of edits between two editors to be considered overlap'
+TEMPORAL_OFFSET: '(-1, 0, 1)'
+NAMESPACES: [0, 1, 118]
+EDIT_WINDOW: 5
 
-BASIC_AUTH_USERNAME: '<USERNAME>'
-BASIC_AUTH_PASSWORD: '<PASSWORD>'
+BASIC_AUTH_USERNAME: 'changeme'
+BASIC_AUTH_PASSWORD: 'changemepls'

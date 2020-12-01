@@ -3,6 +3,10 @@ Find the most similar users to a given user on Wikipedia based on edit history.
 
 This repository has two primary components: the API endpoint (on Cloud VPS) and interface (also running on Cloud VPS but could be separated out)
 
+## Running the service
+
+Locally, you can run an instance of the service reflecting the current state of the repo by running `make docker`. This requires [Blubber](https://wikitech.wikimedia.org/wiki/Blubber).
+
 ## API
 See [the API template](https://github.com/wikimedia/research-api-endpoint-template) for more details on how to start and update the instance, though updates for this repository are much more manual than desirable at the moment until the config is updated. The instance has a nginx web server that sends requests via uWSGI to a Flask app.
 
@@ -25,7 +29,7 @@ Details on each below:
 * `USER_METADATA` (203MB): for every user in `COEDIT_DATA`, this contains basic metadata about them (total number of edits in data, total number of pages edited, user or IP, timestamp range of edits).
 
 Note, the sizes listed are for the raw data files -- in practice, the data takes up more space in memory because of how it is stored within the application to allow for easy updating etc. and may grow with queries (albeit quite slowly).
-The raw files are not contained within this repository as they are quite large and there is little value to version control for them. 
+The raw files are not contained within this repository as they are quite large and there is little value to version control for them.
 
 ### Relevant Files
 * `flask_config.yaml`: this file contains key parameters for the API and the username/password so it is not currently included in this repository. Reach out to Isaac if you need access.
