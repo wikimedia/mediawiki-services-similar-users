@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from datetime import datetime, timedelta
 from ast import literal_eval as make_tuple
 import argparse
@@ -10,7 +8,8 @@ import pathlib
 
 import mwapi
 import yaml
-from flask import Flask, request, jsonify, render_template, abort
+
+from flask import Flask, request, jsonify, render_template, abort, Blueprint, current_app
 from flask_basicauth import BasicAuth
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
@@ -18,13 +17,18 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from sklearn.metrics.pairwise import cosine_similarity
 from .models import database, UserMetadata, Coedit, Temporal
+from .factory import create_app
 
-app = Flask(__name__)
+# We need a Blueprint to delegate extensions initialisation
+# to a create_app() factory method. `current_app` is a proxy,
+# that points to the application handling the current activity.
+api = Blueprint('api', __name__)
+app = current_app
 
-metrics = PrometheusMetrics(app)
-basic_auth = BasicAuth(app)
+metrics = PrometheusMetrics.for_app_factory()
+basic_auth = BasicAuth()
 # Enable CORS for API endpoints
-cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
+cors = CORS(resources={r"/api/*": {"origins": "*"}})
 
 # Testing
 # Local: http://127.0.0.1:5000/similarusers?usertext=Ziyingjiang
@@ -47,7 +51,7 @@ INTERACTIONTIMELINE_URL = (
 )
 
 
-@app.route("/")
+@api.route("/")
 @basic_auth.required
 def index():
     """Simple UI for querying API. Password-protected to reduce chance of accidental discovery / abuse."""
@@ -57,7 +61,7 @@ def index():
         return abort(403, description="UI disabled")
 
 
-@app.route("/similarusers", methods=["GET"])
+@api.route("/similarusers", methods=["GET"])
 @basic_auth.required
 @metrics.counter(
     "similar_users",
@@ -133,7 +137,7 @@ def get_similar_users(lang="en"):
     return jsonify(result)
 
 
-@app.route("/healthz", methods=["GET"])
+@api.route("/healthz", methods=["GET"])
 def healthz():
     return "similarusers is running"
 
@@ -674,46 +678,51 @@ def parse_args():
     return parser.parse_args()
 
 
+def init_app_resources(app, resourcedir):
+    with app.test_request_context():
+        # TODO(gmodena, 2020-11-27): create (if not exists) a database and populate it at startup.
+        # Used for development; this logic will be moved to a migration/manager module.
+        # To do it properly, we should refactor app creation to a factory,
+        # rather than using a global object.
+        try:
+            database.create_all()
+            load_data(resourcedir)
+        except Exception as e:
+            app.logger.error(f"Failed to load input data: {e}")
+
+
 def configure_app(args=None):
     if args:
         config_path = args.config
         resource_path = args.resourcedir
     else:
-        config_path = os.environ["CONFIG_PATH"]
-        resource_path = os.environ["RESOURCE_PATH"]
+        config_path = os.environ.get("CONFIG_PATH", None)
+        resource_path = os.environ.get("RESOURCE_PATH", None)
 
     # TODO move app creation to its own function rather than using it as a
     # global
-    with open(config_path) as config_f:
-        # TODO load defaults
-        config_yaml = yaml.safe_load(config_f)
-    app.config.update(config_yaml)
+    config_yaml = {}
+    if config_path:
+        with open(config_path) as config_f:
+            # TODO load defaults
+            config_yaml = yaml.safe_load(config_f)
 
-    logging.basicConfig(level=logging.getLevelName(config_yaml["LOG_LEVEL"]))
+    app = create_app(config=config_yaml)
+    if resource_path:
+        # TODO(gmodena, 2020-10-11): we should delegate this step to the ingestion script
+        init_app_resources(app, resource_path)
+    if 'LOG_LEVEL' in config_yaml:
+        logging.basicConfig(level=logging.getLevelName(config_yaml["LOG_LEVEL"]))
 
-    database.init_app(app)
-    if args and "resourcedir" in args:
-        with app.test_request_context():
-            # TODO(gmodena, 2020-11-27): create (if not exists) a database and populate it at startup.
-            # Used for development; this logic will be moved to a migration/manager module.
-            # To do it properly, we should refactor app creation to a factory,
-            # rather than using a global object.
-            try:
-                database.create_all()
-                load_data(args.resourcedir)
-            except Exception as e:
-                app.logger.error(f"Failed to load input data: {e}")
+    return app
+
 
 def main(args=None):
-
     configure_app(args)
-    if args:
-        # Only use LISTEN_IP to configure docker port exposure - not for serving elsewhere.
-        app.run(app.config["LISTEN_IP"] if "LISTEN_IP" in app.config else "127.0.0.1")
+    # Only use LISTEN_IP to configure docker port exposure - not for serving elsewhere.
+    app.run(app.config["LISTEN_IP"] if "LISTEN_IP" in app.config else "127.0.0.1")
 
 
 if __name__ == "__main__":
     args = parse_args()
     main(args)
-else:
-    configure_app()
