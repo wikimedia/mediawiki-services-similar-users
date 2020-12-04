@@ -501,11 +501,11 @@ def load_coedit_data(resource_dir):
             try:
                 line = line_str.strip().split("\t")
                 user_text = line[0]
-                neighbor = line[1]
+                user_text_neighbour = line[1]
                 overlap_count = int(line[2])
 
                 coedit = Coedit(
-                    user_text=user_text, neighbor=neighbor, overlap_count=overlap_count
+                    user_text=user_text, user_text_neighbour=user_text_neighbour, overlap_count=overlap_count
                 )
             except Exception as e:
                 app.logger.error(f"Failed to parse record {line_str}: {e}")
@@ -601,7 +601,7 @@ def lookup_user(user_text):
 
     USER_METADATA[user_text] = metadata.__dict__ if metadata else {}
     COEDIT_DATA[user_text] = [
-        (row.neighbor, row.overlap_count)
+        (row.user_text_neighbour, row.overlap_count)
         for row in Coedit.query.filter_by(user_text=user_text).all()
     ]
     TEMPORAL_DATA[user_text] = {"d": [0] * 7, "h": [0] * 24}

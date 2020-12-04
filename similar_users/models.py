@@ -16,7 +16,7 @@ class UserMetadata(database.Model):
     """
 
     __tablename__ = "user"
-    id = database.Column(database.Integer, primary_key=True, index=True)
+    id = database.Column(database.Integer, primary_key=True)
     user_text = database.Column(database.String)
     is_anon = database.Column(database.Boolean)
     num_edits = database.Column(database.Integer)
@@ -31,10 +31,10 @@ class Coedit(database.Model):
     of edits in which two users overlapped.
     """
 
-    __tablename__ = "__coedit__"
-    id = database.Column(database.Integer, primary_key=True, index=True)
+    __tablename__ = "coedit"
+    id = database.Column(database.Integer, primary_key=True)
     user_text = database.Column(database.String)
-    neighbor = database.Column(database.String)
+    user_text_neighbour = database.Column(database.String)
     overlap_count = database.Column(database.Integer)
 
 
@@ -44,8 +44,8 @@ class Temporal(database.Model):
     edits occur.
     """
 
-    __tablename__ = "__temporal__"
-    id = database.Column(database.Integer, primary_key=True, index=True)
+    __tablename__ = "temporal"
+    id = database.Column(database.Integer, primary_key=True)
     user_text = database.Column(database.String)
     d = database.Column(database.Integer)
     h = database.Column(database.Integer)
