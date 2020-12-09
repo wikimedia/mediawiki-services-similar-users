@@ -31,6 +31,20 @@ Details on each below:
 Note, the sizes listed are for the raw data files -- in practice, the data takes up more space in memory because of how it is stored within the application to allow for easy updating etc. and may grow with queries (albeit quite slowly).
 The raw files are not contained within this repository as they are quite large and there is little value to version control for them.
 
+#### Database ingestion
+A script to load the service models into a database is provided under `migrations`.
+It can be executed  with:
+```bash
+cd migrations
+PYTHONPATH=../ python ingest.py -r ../similar_users/resources --db-connection-string sqlite:////app.db --create-tables --dry-run 
+```
+When executing with `--dry-run`, ingestion statistics will be provided without actually modifying the
+database. `--create-tables` instructs the script to create schemas before attempting insertion. 
+Note that `ingest.py` performs a refresh at each  run: old records are deleted before inserting
+new ones.
+
+The service can then query data from a database by setting `SQLALCHEMY_DATABASE_URI` in `flask_config.yaml`.
+
 ### Relevant Files
 * `flask_config.yaml`: this file contains key parameters for the API and the username/password so it is not currently included in this repository. Reach out to Isaac if you need access.
 * `wsgi.py`: this contains the entirety of the flask API. The logic happens in the `get_similar_users` function. There are several stages:
