@@ -1,8 +1,10 @@
+from flask import current_app
 from contextlib import contextmanager
 from functools import wraps
 
 from .models import database
-from .wsgi import app
+
+app = current_app
 
 
 def release_mysql_lock(name):
@@ -33,26 +35,33 @@ def mysql_lock(name, timeout=3, retry=0):
     tries = max(0, retry - 1)
     while not resource and tries >= 0:
         app.logger.debug(f'Attempting to acquire application lock `{name}`. Waiting for `{timeout}` seconds.'
-                         f'`{tries}` re-tries left')
+                         f'`{tries}` re-tries left.')
         resource = database.session.execute(
         f"SELECT GET_LOCK('{name}', {timeout})").scalar()
         tries -= 1
     else:
         if resource:
-            app.logger.debug(f'Acquired application lock `{name}`')
+            app.logger.debug(f'Acquired application lock `{name}`.')
             yield resource
             release_mysql_lock(name=name)
         else:
-            raise RuntimeError(f"Could not acquire application lock `{name}`")
+            raise RuntimeError(f"Could not acquire application lock `{name}`.")
+
+
+def is_used_lock(name='lock_ingestion'):
+    is_used = False
+    rdbms = database.session.bind.dialect.name
+    if rdbms == "mysql":
+        is_used = bool(database.session.execute(
+            f"SELECT IS_USED_LOCK('{name}'").scalar())
+    else:
+        app.logger.warning(f'Failed to test for application lock. '
+                           f'The IS_USED_LOCK function is not available on {rdbms}.')
+    return is_used
 
 
 def application_lock(func, name="lock_ingestion", timeout=10, retry=0):
     """
-    Acquire a MySQL database user lock in the execution context of `func`.
-
-    Lock acquisition is guaranteed only when connecting to mysql engines.
-
-    :param func:
     :param name: lock name
     :param timeout: waiting time (in seconds) between retries
     :param retry: number of attempts to acquire a lock
@@ -62,7 +71,7 @@ def application_lock(func, name="lock_ingestion", timeout=10, retry=0):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if database.session.bind.dialect.name == "mysql":
-            with mysql_lock(name, timeout) as lock:
+            with mysql_lock(name, timeout, retry) as lock:
                 if lock:
                     func(*args, **kwargs)
                 else:
