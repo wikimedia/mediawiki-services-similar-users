@@ -1,5 +1,5 @@
 version: v4
-base: docker-registry.wikimedia.org/python3
+base: docker-registry.wikimedia.org/python3-build-buster
 lives:
   in: /srv/service
 runs:
@@ -12,7 +12,6 @@ python:
 variants:
   build:
     apt: { packages: [build-essential] }
-    base: docker-registry.wikimedia.org/python3-build-buster
     copies: [local]
     python:
       requirements: [requirements.txt]
