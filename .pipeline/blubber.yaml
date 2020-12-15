@@ -1,11 +1,10 @@
 version: v4
 base: docker-registry.wikimedia.org/python3-build-buster
 lives:
-  in: /srv/service
+  in: /srv/service/
 runs:
   environment:
     APP_BASE_PATH: /srv/service
-
 python:
   version: python3
 
@@ -15,7 +14,7 @@ variants:
     copies: [local]
     python:
       requirements: [requirements.txt]
-    entrypoint: [python3, similar_users/wsgi.py]
+    entrypoint: [flask, run]
     runs: { insecurely: true }
   development:
     includes: [build]
@@ -23,7 +22,7 @@ variants:
       environment:
         CONFIG_PATH: similar_users/flask_config.yaml
         RESOURCE_PATH: similar_users/resources/
-    entrypoint: [gunicorn, "similar_users.wsgi:app"]
+    entrypoint: [gunicorn, "similar_users.wsgi:configure_app()"]
   test:
     includes: [build]
     entrypoint: [make, test]
