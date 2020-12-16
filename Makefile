@@ -10,4 +10,4 @@ docker: dockerfile
 	docker run -p 5000:5000 sockpuppet
 
 test:	venv
-	pytest
+	pytest --cov similar_users

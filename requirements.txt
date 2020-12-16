@@ -27,3 +27,4 @@ uWSGI==2.0.19.1
 Werkzeug==1.0.1
 pytest==6.1.2
 pytest-flask==1.1.0
+pytest-cov==2.10.1
