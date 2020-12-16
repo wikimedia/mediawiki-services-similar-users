@@ -101,6 +101,7 @@ class Sink:
             uuid.uuid4()
         )  # unique identifier of the set of data being inserted
         self.sources = sources
+        self.stats = []
 
     @staticmethod
     def _grouper(iterable, n):
@@ -181,10 +182,12 @@ class Sink:
                     except Exception as e:
                         app.logger.error(f"Failed to commit transaction. Rolling back - {e}")
             # TODO(gmodena, 2020-12-08): we could push these counters as metrics.
-            # TODO(gmodena, 2020-12-16): These should be stored in the instance, or returned from write()
-            print(
-                f"Model={source.model.__name__}\tDeleted={num_deleted}\tRead={num_reads}\tSkipped={num_skips}\tInserted={num_reads - num_skips}"
-            )
+            self.stats.append(dict(model=source.model.__name__,
+                                   deleted=num_deleted,
+                                   read=num_reads,
+                                   skipped=num_skips,
+                                   inserted=num_reads - num_skips ))
+
 
 
 def parse_args():
@@ -269,6 +272,10 @@ def main(args):
         sink.write(dry_run=args.dry_run,
                    batch_size=args.batch_size,
                    throttle_ms=args.throttle_ms)
+        for stat in sink.stats:
+            print(
+                f"Model={stat['model']}\tDeleted={stat['deleted']}\tRead={stat['read']}\tSkipped={stat['skipped']}\tInserted={stat['inserted']}"
+            )
 
 
 if __name__ == "__main__":
