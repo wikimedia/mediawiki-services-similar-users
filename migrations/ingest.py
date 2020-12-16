@@ -5,19 +5,21 @@ import csv
 import distutils
 import uuid
 import logging
+import time
 
+from typing import List
 from dataclasses import dataclass
+from flask import current_app
 from flask_sqlalchemy.model import DefaultMeta
 from datetime import datetime
 from itertools import islice
 
 from similar_users.models import database, UserMetadata, Temporal, Coedit
-
-# TODO(gmodena, 2020-12-07): we should use the factory constructor once 645072 is merged.
-from similar_users.wsgi import app
+from similar_users.factory import create_app
 from similar_users.wsgi import TIME_FORMAT
 from similar_users.dblock import application_lock
 
+app = current_app
 
 @dataclass
 class Source:
@@ -90,7 +92,7 @@ class CoeditSource(Source):
 
 
 class Sink:
-    def __init__(self, sources):
+    def __init__(self, sources: List[Source]):
         """
         Manager the Similarusers service dataset updates.
         :param sources: a list of `Source` objects, mapping to datasets to insert
@@ -119,25 +121,25 @@ class Sink:
             group = tuple(islice(it, n))
 
     @application_lock
-    def write(self, dry_run=False, batch_size=50):
+    def write(self, dry_run: bool = False, batch_size: int = 50, throttle_ms: int = 0):
         """
         Commit database changes, unless `dry_run` is `True`.
-
-        :param dry_run:
-        :param batch_size:
+        :param dry_run: don't commit changes unless dry_run is True
+        :param batch_size: number of rows to insert per batch
+        :param throttle_ms: delay between commits, expressed in milliseconds
         :return:
         """
-        try:
-            for source in self.sources:
-                self.load(source=source, batch_size=batch_size)
-            if not dry_run:
-                database.session.commit()
-        except Exception as e:
-            app.logger.error(f"Failed to commit transaction. Rolling back - {e}")
-            if not dry_run:
-                database.session.rollback()
+        throttle = throttle_ms / 1000 # Express the delay as a fraction of seconds.
+        for source in self.sources:
+            self._load_and_insert(source=source,
+                                  dry_run=dry_run,
+                                  batch_size=batch_size,
+                                  throttle=throttle)
 
-    def load(self, source=None, batch_size=1):
+    def _load_and_insert(self, source: Source = None,
+                         dry_run: bool = False,
+                         batch_size: int = 50,
+                         throttle: float = 0.0):
         """
         Read from input dataset `source` and insert into the target database in
         bulks of size `batch_size`. Previously stored data will be deleted.
@@ -146,7 +148,6 @@ class Sink:
         the function caller.
 
         :param source:
-        :param batch_size:
         :return:
         """
         app.logger.info(f"Loading {source.model.__name__} data")
@@ -173,7 +174,14 @@ class Sink:
                     else:
                         mappings.append(record)
                 database.session.bulk_insert_mappings(source.model, mappings)
-            # TODO(gmodena, 2020-12-08): we could push these counters as metrics
+                if not dry_run:
+                    try:
+                        time.sleep(throttle)
+                        database.session.commit()
+                    except Exception as e:
+                        app.logger.error(f"Failed to commit transaction. Rolling back - {e}")
+            # TODO(gmodena, 2020-12-08): we could push these counters as metrics.
+            # TODO(gmodena, 2020-12-16): These should be stored in the instance, or returned from write()
             print(
                 f"Model={source.model.__name__}\tDeleted={num_deleted}\tRead={num_reads}\tSkipped={num_skips}\tInserted={num_reads - num_skips}"
             )
@@ -216,6 +224,22 @@ def parse_args():
         dest="create_tables",
     )
     parser.add_argument(
+        "--batch-size",
+        action="store",
+        help="Number of rows to insert in bulk. Default: 1000 rows/batch",
+        dest="batch_size",
+        type=int,
+        default=1000
+    )
+    parser.add_argument(
+        "--throttle-ms",
+        action="store",
+        help="Add a delay (ms) between inserts, to throttle db writes. Default: 50ms",
+        dest="throttle_ms",
+        type=int,
+        default=50
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         dest="verbose",
@@ -229,14 +253,10 @@ def parse_args():
 def main(args):
     logging.basicConfig(level=logging.WARNING)
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = args.db_connection_string
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app = create_app({'SQLALCHEMY_DATABASE_URI': args.db_connection_string,
+                      'SQLALCHEMY_TRACK_MODIFICATIONS': False})
 
     with app.test_request_context():
-        database.init_app(
-            app
-        )  # TODO(gmodena, 2020-12-07): init_app can be delegated to
-        # the factory constructor once 645072 is merged.
         if args.create_tables:
             database.create_all()
         sources = [
@@ -246,7 +266,9 @@ def main(args):
         ]
 
         sink = Sink(sources=sources)
-        sink.write()
+        sink.write(dry_run=args.dry_run,
+                   batch_size=args.batch_size,
+                   throttle_ms=args.throttle_ms)
 
 
 if __name__ == "__main__":
