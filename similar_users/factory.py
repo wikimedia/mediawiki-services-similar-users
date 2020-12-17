@@ -16,10 +16,10 @@ def create_app(config=None):
         app.config.update(config)
 
     from .wsgi import api
-    from .wsgi import metrics, cors, basic_auth, database
+    from .wsgi import metrics, cors, basic_auth, database, swagger
 
     with app.app_context():
-        for extension in (metrics, cors, basic_auth, database):
+        for extension in (metrics, cors, basic_auth, database, swagger):
             extension.init_app(app=app)
 
         app.register_blueprint(api)

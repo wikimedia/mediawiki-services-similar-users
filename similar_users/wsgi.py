@@ -12,6 +12,7 @@ import yaml
 from flask import Flask, request, jsonify, render_template, abort, Blueprint, current_app
 from flask_basicauth import BasicAuth
 from flask_cors import CORS
+from flasgger import Swagger
 from prometheus_flask_exporter import PrometheusMetrics
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -31,6 +32,9 @@ metrics = PrometheusMetrics.for_app_factory()
 basic_auth = BasicAuth()
 # Enable CORS for API endpoints
 cors = CORS(resources={r"/api/*": {"origins": "*"}})
+
+# API documentation endopint at /apidocs.
+swagger = Swagger(decorators=[basic_auth.required])
 
 # Testing
 # Local: http://127.0.0.1:5000/similarusers?usertext=Ziyingjiang
@@ -56,7 +60,17 @@ INTERACTIONTIMELINE_URL = (
 @api.route("/")
 @basic_auth.required
 def index():
-    """Simple UI for querying API. Password-protected to reduce chance of accidental discovery / abuse."""
+    """ Simple UI for querying API. Password-protected to reduce chance of accidental discovery / abuse.
+        ---
+        get:
+            summary: / endpoint
+            security: BasicAuth
+        responses:
+            200:
+                description: view; index.html template
+            403:
+                description: UI rendering has been disabled for this instance
+    """
     if app.config.get("ENABLE_UI", False):
         return render_template("index.html")
     else:
@@ -75,12 +89,75 @@ def index():
     },
 )
 def get_similar_users(lang="en"):
-    """For a given user, find the k-most-similar users based on edit overlap.
-
-    Expected parameters:
-    * usertext (str): username or IP address to query
-    * k (int): how many similar users to return at maximum?
-    * followup (bool): include additional tool links in API response for follow-up on data
+    """ Similar Users GET endpoint
+    For a given user, find the k-most-similar users based on edit overlap
+    ---
+    get:
+        summary: /similarusers endpoint
+        parameters:
+            - name: usertext
+              type: string
+              in: query
+              description: username or IP address to query
+              required: true
+            - name: k
+              type: integer
+              in: query
+              description: maximum number of similar users to return
+              required: false
+            - name: followup
+              type: bool
+              in: query
+              description: include additional tool links in API response for follow-up on data
+              required: false
+    definitions:
+        SimilarUsers:
+            type: object
+            properties:
+                user_text:
+                    type: string
+                num_edits_in_data:
+                    type: integer
+                first_edit_in_data:
+                    type: date-time
+                last_edit_in_data:
+                    type: date-time
+                result:
+                    type: array
+                    items:
+                        $ref: '#/definitions/User'
+        User:
+            type: object
+            properties:
+                num_edits_in_data:
+                    type: number
+                num_pages:
+                    type: number
+                edit-overlap:
+                    type: number
+                edit-overlap-inv:
+                    type: number
+                day-overlap:
+                    type: number
+                hour-overlap:
+                    type: number
+                follow-up:
+                    type: object
+                    required: false
+                    properties:
+                        similar:
+                            type: string
+                        editorinteract:
+                            type: string
+                        interaction-timeline:
+                            type: string
+    responses:
+        200:
+            description: similar users json object
+            schema:
+                $ref: '#/definitions/SimilarUsers'
+        403:
+            description: service unavailable
     """
     user_text, num_similar, followup, error = validate_api_args(lang)
     if error is not None:
@@ -150,6 +227,16 @@ def get_similar_users(lang="en"):
 
 @api.route("/healthz", methods=["GET"])
 def healthz():
+    """
+    Health status route
+    Probe if the service is up and running
+    ---
+    get:
+        summary: healthz endpoint
+    responses:
+        200:
+            description: similarusers is running
+    """
     return "similarusers is running"
 
 
