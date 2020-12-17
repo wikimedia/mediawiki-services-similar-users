@@ -7,6 +7,7 @@ import uuid
 import logging
 import time
 
+from tqdm import tqdm
 from typing import List
 from dataclasses import dataclass
 from flask import current_app
@@ -144,6 +145,7 @@ class Sink:
                                   batch_size=batch_size,
                                   throttle=throttle)
 
+
     @staticmethod
     def _truncate_before_insert(model: object = None, dry_run: bool = False):
         truncated = False
@@ -182,7 +184,8 @@ class Sink:
         num_skips = 0
 
         insertion_metadata = {"dataset_id": str(self.dataset_id)}
-        with open(os.path.join(source.resourcedir, source.file_name), "r") as infile:
+        source_path = os.path.join(source.resourcedir, source.file_name)
+        with open(source_path, "r") as infile, tqdm(desc=f'Loading {source_path}', unit='rows') as tq:
             reader = csv.DictReader(
                 infile, delimiter=source.delimiter, quoting=csv.QUOTE_NONE
             )
@@ -199,6 +202,7 @@ class Sink:
                     else:
                         mappings.append(record)
                 database.session.bulk_insert_mappings(source.model, mappings)
+                tq.update(len(rows))
                 if not dry_run:
                     try:
                         time.sleep(throttle)
