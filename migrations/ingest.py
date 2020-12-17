@@ -132,10 +132,35 @@ class Sink:
         """
         throttle = throttle_ms / 1000 # Express the delay as a fraction of seconds.
         for source in self.sources:
+            # TODO(gmodena, 2020-12-17): this bit is dangerous. We should do some form of data validation
+            # *before* truncating tables. Since the ingestion process is manual, we rely on a person to check
+            # input datasets. When we automate things, this will bite us.
+            truncated = self._truncate_before_insert(source.model, dry_run=dry_run)
+            if not truncated:
+                raise RuntimeError(f'Failed to initialise sockpuppet table `{source.model.__tablename__}`')
+
             self._load_and_insert(source=source,
                                   dry_run=dry_run,
                                   batch_size=batch_size,
                                   throttle=throttle)
+
+    @staticmethod
+    def _truncate_before_insert(model: object = None, dry_run: bool = False):
+        truncated = False
+        try:
+            if database.session.bind.dialect.name == "sqlite":
+                database.session.query(model).delete()
+            else:
+                database.session.execute(f'TRUNCATE TABLE `{model.__tablename__}`')
+            if not dry_run:
+                database.session.commit()
+        except Exception as e:
+            app.log.error(f'Failed to truncate `{model.__tablename__}`. {e}')
+            database.session.rollback()
+        else:
+            truncated = True
+
+        return truncated
 
     def _load_and_insert(self, source: Source = None,
                          dry_run: bool = False,
@@ -155,7 +180,6 @@ class Sink:
 
         num_reads = 0
         num_skips = 0
-        num_deleted = database.session.query(source.model).delete()
 
         insertion_metadata = {"dataset_id": str(self.dataset_id)}
         with open(os.path.join(source.resourcedir, source.file_name), "r") as infile:
@@ -183,7 +207,6 @@ class Sink:
                         app.logger.error(f"Failed to commit transaction. Rolling back - {e}")
             # TODO(gmodena, 2020-12-08): we could push these counters as metrics.
             self.stats.append(dict(model=source.model.__name__,
-                                   deleted=num_deleted,
                                    read=num_reads,
                                    skipped=num_skips,
                                    inserted=num_reads - num_skips ))
@@ -274,7 +297,7 @@ def main(args):
                    throttle_ms=args.throttle_ms)
         for stat in sink.stats:
             print(
-                f"Model={stat['model']}\tDeleted={stat['deleted']}\tRead={stat['read']}\tSkipped={stat['skipped']}\tInserted={stat['inserted']}"
+                f"Model={stat['model']}\tRead={stat['read']}\tSkipped={stat['skipped']}\tInserted={stat['inserted']}"
             )
 
 

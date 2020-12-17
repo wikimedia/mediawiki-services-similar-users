@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `sockpuppet_service`.`user` (
+CREATE TABLE IF NOT EXISTS `sockpuppet`.`user` (
         id INTEGER NOT NULL AUTO_INCREMENT,
         user_text VARCHAR(255) NOT NULL,
         is_anon BOOLEAN NOT NULL,
@@ -12,10 +12,10 @@ CREATE TABLE IF NOT EXISTS `sockpuppet_service`.`user` (
         CHECK (is_anon IN (0, 1))
 );
 
-CREATE INDEX `ix_user_user_text` ON `sockpuppet_service`.`user` (user_text);
+CREATE INDEX `ix_user_user_text` ON `sockpuppet`.`user` (user_text);
 
 
-CREATE TABLE IF NOT EXISTS `sockpuppet_service`.`coedit` (
+CREATE TABLE IF NOT EXISTS `sockpuppet`.`coedit` (
         id INTEGER NOT NULL AUTO_INCREMENT,
         user_text VARCHAR(255) NOT NULL,
         user_text_neighbour VARCHAR(255) NOT NULL,
@@ -25,9 +25,9 @@ CREATE TABLE IF NOT EXISTS `sockpuppet_service`.`coedit` (
         PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS `ix_coedit_user_text` ON `sockpuppet_service`.`coedit` (user_text);
+CREATE INDEX IF NOT EXISTS `ix_coedit_user_text` ON `sockpuppet`.`coedit` (user_text);
 
-CREATE TABLE IF NOT EXISTS `sockpuppet_service`.`temporal` (
+CREATE TABLE IF NOT EXISTS `sockpuppet`.`temporal` (
         id INTEGER NOT NULL AUTO_INCREMENT,
         user_text VARCHAR(255) NOT NULL,
         d TINYINT NOT NULL,
@@ -38,4 +38,4 @@ CREATE TABLE IF NOT EXISTS `sockpuppet_service`.`temporal` (
         PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS `service_ix_temporal_user_text` ON `sockpuppet_service`.`temporal` (user_text);
+CREATE INDEX IF NOT EXISTS `service_ix_temporal_user_text` ON `sockpuppet`.`temporal` (user_text);
