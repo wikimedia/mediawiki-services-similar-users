@@ -18,6 +18,8 @@ from requests.packages.urllib3.util.retry import Retry
 from sklearn.metrics.pairwise import cosine_similarity
 from .models import database, UserMetadata, Coedit, Temporal
 from .factory import create_app
+from .dblock import is_used_lock as db_refresh_in_progress
+
 
 # We need a Blueprint to delegate extensions initialisation
 # to a create_app() factory method. `current_app` is a proxy,
@@ -85,11 +87,20 @@ def get_similar_users(lang="en"):
         app.logger.error("Got error when trying to validate API arguments: %s", error)
         return jsonify({"Error": error})
 
-    try:
-        lookup_user(user_text)
-    except Exception as e:
-        app.logger.error(f"Unable to load data for user {user_text}: {e}")
-        return jsonify({"Error": e})
+    # Test is the model dataset is being refreshed, and abort the request if so.a
+    # We assume that refreshes are sporadic events; The refresh process won't be notified
+    # of read attempts. Consistency of this query result set
+    # is only eventually guaranteed.
+    # A database refresh can potentially start while executing this block.
+    if not db_refresh_in_progress():
+        try:
+            lookup_user(user_text)
+        except Exception as e:
+            app.logger.error(f"Unable to load data for user {user_text}: {e}")
+            return jsonify({"Error": e})
+    else:
+        app.logger.warning("Database refresh in progress. Aborting request.")
+        return jsonify("Error:", "Database refresh in progress"), 403
 
     try:
         edits = get_additional_edits(
@@ -140,6 +151,29 @@ def get_similar_users(lang="en"):
 @api.route("/healthz", methods=["GET"])
 def healthz():
     return "similarusers is running"
+
+
+@api.route("/database/refresh", methods=["GET"])
+@basic_auth.required
+def database_status():
+    """
+    GET the database refresh status.
+    The response payload contains a json object with the refresh status.
+    ---
+    get:
+        summary: /database/refresh endpoint
+    definitions:
+        RefreshStatus:
+            type: object
+            properties:
+                in_progress: bool
+    responses:
+        200:
+            description: the dataset status
+            schema:
+                $ref: '#/definitions/RefreshStatus'
+    """
+    return jsonify({'in_progress': db_refresh_in_progress()})
 
 
 def make_mwapi_session(lang, user_agent, retries):
