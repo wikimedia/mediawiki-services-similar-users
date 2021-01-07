@@ -22,7 +22,7 @@ variants:
       environment:
         CONFIG_PATH: similar_users/flask_config.yaml
         RESOURCE_PATH: similar_users/resources/
-    entrypoint: [gunicorn, "similar_users.wsgi:configure_app()"]
+    entrypoint: [gunicorn, "-b", "0.0.0.0:5000", "similar_users.wsgi:configure_app()"]
   test:
     includes: [build]
     entrypoint: [make, test]
