@@ -820,6 +820,7 @@ def configure_app(args=None):
         config_path = os.environ.get("CONFIG_PATH", None)
         resource_path = os.environ.get("RESOURCE_PATH", None)
 
+
     # TODO move app creation to its own function rather than using it as a
     # global
     config_yaml = {}
@@ -827,6 +828,13 @@ def configure_app(args=None):
         with open(config_path) as config_f:
             # TODO load defaults
             config_yaml = yaml.safe_load(config_f)
+
+    # for easier k8s secrets integration, allow loading of the DB URI from env
+    # vars
+    for secret in ["SQLALCHEMY_DATABASE_URI", "BASIC_AUTH_PASSWORD"]:
+        if secret in os.environ:
+            config_yaml[secret] = os.environ[secret]
+
 
     app = create_app(config=config_yaml)
     if resource_path:
