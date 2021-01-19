@@ -9,7 +9,15 @@ import pathlib
 import mwapi
 import yaml
 
-from flask import Flask, request, jsonify, render_template, abort, Blueprint, current_app
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    render_template,
+    abort,
+    Blueprint,
+    current_app,
+)
 from flask_basicauth import BasicAuth
 from flask_cors import CORS
 from flasgger import Swagger
@@ -25,7 +33,7 @@ from .dblock import is_used_lock as db_refresh_in_progress
 # We need a Blueprint to delegate extensions initialisation
 # to a create_app() factory method. `current_app` is a proxy,
 # that points to the application handling the current activity.
-api = Blueprint('api', __name__)
+api = Blueprint("api", __name__)
 app = current_app
 
 metrics = PrometheusMetrics.for_app_factory()
@@ -60,16 +68,16 @@ INTERACTIONTIMELINE_URL = (
 @api.route("/")
 @basic_auth.required
 def index():
-    """ Simple UI for querying API. Password-protected to reduce chance of accidental discovery / abuse.
-        ---
-        get:
-            summary: / endpoint
-            security: BasicAuth
-        responses:
-            200:
-                description: view; index.html template
-            403:
-                description: UI rendering has been disabled for this instance
+    """Simple UI for querying API. Password-protected to reduce chance of accidental discovery / abuse.
+    ---
+    get:
+        summary: / endpoint
+        security: BasicAuth
+    responses:
+        200:
+            description: view; index.html template
+        403:
+            description: UI rendering has been disabled for this instance
     """
     if app.config.get("ENABLE_UI", False):
         return render_template("index.html")
@@ -89,7 +97,7 @@ def index():
     },
 )
 def get_similar_users(lang="en"):
-    """ Similar Users GET endpoint
+    """Similar Users GET endpoint
     For a given user, find the k-most-similar users based on edit overlap
     ---
     get:
@@ -184,8 +192,12 @@ def get_similar_users(lang="en"):
             user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
         )
     except Exception as exc:
-        app.logger.error("Failed to get additional edits for user %s: %s", user_text, exc)
-        return jsonify({"Error": f"Failed to get additional edits for user {user_text}"})
+        app.logger.error(
+            "Failed to get additional edits for user %s: %s", user_text, exc
+        )
+        return jsonify(
+            {"Error": f"Failed to get additional edits for user {user_text}"}
+        )
 
     app.logger.debug("Got %d edits for user %s", len(edits) if edits else 0, user_text)
     if edits is not None:
@@ -260,19 +272,34 @@ def database_status():
             schema:
                 $ref: '#/definitions/RefreshStatus'
     """
-    return jsonify({'in_progress': db_refresh_in_progress()})
+    return jsonify({"in_progress": db_refresh_in_progress()})
 
 
-def make_mwapi_session(lang, user_agent, retries):
-    session = mwapi.Session(
-        "https://{0}.wikipedia.org".format(lang), user_agent=user_agent
-    )
+def make_mwapi_session(lang, user_agent, retries, request_host=None):
+    """Make an mwapi session object.
+    Params:
+     lang: language to query wikipedia for
+     user_agent: custom user agent to use in place of the mwapi default
+     retries: number of times to retry request
+     request_host: optional - make the actual HTTP request to this IP or host with the wikipedia hostname as a Host header.
+    """
+
+    if not request_host:
+        mount_host = f"https://{lang}.wikipedia.org"
+        session = mwapi.Session(mount_host, user_agent=user_agent)
+
+    else:
+        # TODO remove this behaviour when we patch the mwapi library accordingly
+        mount_host = f"https://{request_host}"
+        session = mwapi.Session(mount_host, user_agent=user_agent)
+        session.headers["Host"] = f"{lang}.wikipedia.org"
+
     if retries:
         retry_strategy = Retry(
             total=retries,
         )
         session.session.mount(
-            "https://{0}.wikipedia.org".format(lang),
+            mount_host,
             HTTPAdapter(max_retries=retry_strategy),
         )
     return session
@@ -353,7 +380,10 @@ def get_additional_edits(
         arvstart = app.config["MOST_RECENT_REV_TS"]
     if session is None:
         session = make_mwapi_session(
-            lang, app.config["CUSTOM_UA"], app.config["MWAPI_RETRIES"]
+            lang,
+            app.config["CUSTOM_UA"],
+            app.config["MWAPI_RETRIES"],
+            app.config["MWAPI_ORIGIN"],
         )
 
     # generate list of all revisions since user's last recorded revision
@@ -429,7 +459,10 @@ def update_coedit_data(user_text, new_edits, k, lang="en", session=None, limit=2
     most_similar_users = COEDIT_DATA[user_text]
     if session is None:
         session = make_mwapi_session(
-            lang, app.config["CUSTOM_UA"], app.config["MWAPI_RETRIES"]
+            lang,
+            app.config["CUSTOM_UA"],
+            app.config["MWAPI_RETRIES"],
+            app.config["MWAPI_ORIGIN"],
         )
 
     overlapping_users = {}
@@ -524,7 +557,10 @@ def check_user_text(user_text, lang="en"):
     # but have to be careful to filter out bots still
     # unfortunately no one API call can give: is user/anon but not bot
     session = make_mwapi_session(
-        lang, app.config["CUSTOM_UA"], app.config["MWAPI_RETRIES"]
+        lang,
+        app.config["CUSTOM_UA"],
+        app.config["MWAPI_RETRIES"],
+        app.config["MWAPI_ORIGIN"],
     )
 
     # check if user has made contributions in 2020
@@ -653,7 +689,9 @@ def load_coedit_data(resource_dir):
                 overlap_count = int(line[2])
 
                 coedit = Coedit(
-                    user_text=user_text, user_text_neighbour=user_text_neighbour, overlap_count=overlap_count
+                    user_text=user_text,
+                    user_text_neighbour=user_text_neighbour,
+                    overlap_count=overlap_count,
                 )
             except Exception as e:
                 app.logger.error(f"Failed to parse record {line_str}: {e}")
@@ -820,7 +858,6 @@ def configure_app(args=None):
         config_path = os.environ.get("CONFIG_PATH", None)
         resource_path = os.environ.get("RESOURCE_PATH", None)
 
-
     # TODO move app creation to its own function rather than using it as a
     # global
     config_yaml = {}
@@ -829,18 +866,20 @@ def configure_app(args=None):
             # TODO load defaults
             config_yaml = yaml.safe_load(config_f)
 
+    if not "MWAPI_ORIGIN" in config_yaml:
+        config_yaml["MWAPI_ORIGIN"] = None
+
     # for easier k8s secrets integration, allow loading of the DB URI from env
     # vars
     for secret in ["SQLALCHEMY_DATABASE_URI", "BASIC_AUTH_PASSWORD"]:
         if secret in os.environ:
             config_yaml[secret] = os.environ[secret]
 
-
     app = create_app(config=config_yaml)
     if resource_path:
         # TODO(gmodena, 2020-10-11): we should delegate this step to the ingestion script
         init_app_resources(app, resource_path)
-    if 'LOG_LEVEL' in config_yaml:
+    if "LOG_LEVEL" in config_yaml:
         logging.basicConfig(level=logging.getLevelName(config_yaml["LOG_LEVEL"]))
 
     return app

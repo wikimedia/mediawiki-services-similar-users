@@ -71,7 +71,8 @@ def app(request):
         "SQLALCHEMY_ECHO": True,
         "BASIC_AUTH_USERNAME": BASIC_AUTH_USERNAME,
         "BASIC_AUTH_PASSWORD": BASIC_AUTH_PASSWORD,
-        "MWAPI_RETRIES": 0
+        "MWAPI_RETRIES": 0,
+        "MWAPI_ORIGIN": None
     }
     app = create_app(config)
     with app.app_context():
