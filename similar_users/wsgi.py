@@ -171,6 +171,7 @@ def get_similar_users(lang="en"):
     if error is not None:
         app.logger.error("Got error when trying to validate API arguments: %s", error)
         return jsonify({"Error": error})
+    app.logger.debug("Finished validating API arguments")
 
     # Test is the model dataset is being refreshed, and abort the request if so.a
     # We assume that refreshes are sporadic events; The refresh process won't be notified
@@ -183,10 +184,12 @@ def get_similar_users(lang="en"):
         except Exception as e:
             app.logger.error(f"Unable to load data for user {user_text}: {e}")
             return jsonify({"Error": e})
+        app.logger.debug("Finished user lookup")
     else:
         app.logger.warning("Database refresh in progress. Aborting request.")
         return jsonify("Error:", "Database refresh in progress"), 403
 
+    app.logger.debug("Starting to get additional edits")
     try:
         edits = get_additional_edits(
             user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
@@ -198,10 +201,13 @@ def get_similar_users(lang="en"):
         return jsonify(
             {"Error": f"Failed to get additional edits for user {user_text}"}
         )
+    app.logger.debug("Finished getting additional edits")
 
     app.logger.debug("Got %d edits for user %s", len(edits) if edits else 0, user_text)
     if edits is not None:
+        app.logger.debug("Started getting coedit data")
         update_coedit_data(user_text, edits, app.config["EDIT_WINDOW"])
+        app.logger.debug("Finished getting coedit data")
     overlapping_users = COEDIT_DATA.get(user_text, [])[:num_similar]
 
     oldest_edit = None
@@ -234,6 +240,7 @@ def get_similar_users(lang="en"):
     app.logger.debug(
         "Got %d similarity results for user %s", len(result["results"]), user_text
     )
+    app.logger.debug("Returning result of {}".format(str(result)))
     return jsonify(result)
 
 
