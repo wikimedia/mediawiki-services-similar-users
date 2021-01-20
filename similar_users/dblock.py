@@ -53,7 +53,7 @@ def is_used_lock(name='lock_ingestion'):
     rdbms = database.session.bind.dialect.name
     if rdbms == "mysql":
         is_used = bool(database.session.execute(
-            f"SELECT IS_USED_LOCK('{name}'").scalar())
+            f"SELECT IS_USED_LOCK('{name}')").scalar())
     else:
         app.logger.warning(f'Failed to test for application lock. '
                            f'The IS_USED_LOCK function is not available on {rdbms}.')
