@@ -8,6 +8,7 @@ import pathlib
 
 import mwapi
 import yaml
+import time
 
 from flask import (
     Flask,
@@ -167,17 +168,24 @@ def get_similar_users(lang="en"):
         403:
             description: service unavailable
     """
+
+    start_timer = time.perf_counter()
     user_text, num_similar, followup, error = validate_api_args(lang)
+    end_timer  = time.perf_counter()
+
     if error is not None:
         app.logger.error("Got error when trying to validate API arguments: %s", error)
         return jsonify({"Error": error})
-    app.logger.debug("Finished validating API arguments")
+    app.logger.debug(f"Finished validating API arguments in {end_timer - start_timer:0.4f} seconds")
 
     # Test is the model dataset is being refreshed, and abort the request if so.a
     # We assume that refreshes are sporadic events; The refresh process won't be notified
     # of read attempts. Consistency of this query result set
     # is only eventually guaranteed.
     # A database refresh can potentially start while executing this block.
+
+    app.logger.debug(f"Starting database lookup")
+    start_timer = time.perf_counter()
     if not db_refresh_in_progress():
         try:
             lookup_user(user_text)
@@ -188,8 +196,11 @@ def get_similar_users(lang="en"):
     else:
         app.logger.warning("Database refresh in progress. Aborting request.")
         return jsonify("Error:", "Database refresh in progress"), 403
+    end_timer = time.perf_counter()
+    app.logger.debug(f"Finished database lookup in {end_timer - start_timer:0.4f} seconds")
 
     app.logger.debug("Starting to get additional edits")
+    start_timer = time.perf_counter()
     try:
         edits = get_additional_edits(
             user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
@@ -201,13 +212,16 @@ def get_similar_users(lang="en"):
         return jsonify(
             {"Error": f"Failed to get additional edits for user {user_text}"}
         )
-    app.logger.debug("Finished getting additional edits")
+    end_timer = time.perf_counter()
+    app.logger.debug(f"Finished getting additional edits in {end_timer - start_timer:0.4f} seconds")
 
     app.logger.debug("Got %d edits for user %s", len(edits) if edits else 0, user_text)
     if edits is not None:
         app.logger.debug("Started getting coedit data")
+        start_timer = time.perf_counter()
         update_coedit_data(user_text, edits, app.config["EDIT_WINDOW"])
-        app.logger.debug("Finished getting coedit data")
+        end_timer = time.perf_counter()
+        app.logger.debug(f"Finished getting coedit data in {end_timer - start_timer:0.4f} seconds")
     overlapping_users = COEDIT_DATA.get(user_text, [])[:num_similar]
 
     oldest_edit = None
@@ -227,8 +241,9 @@ def get_similar_users(lang="en"):
     else:
         app.logger.debug("Didn't get an most_recent_edit for user %s", user_text)
 
+    app.logger.debug("Starting to create get_similar_user result set")
     result = {
-        "user_text": user_text,
+        "user_text": user_text.decode('utf-8'),
         "num_edits_in_data": USER_METADATA[user_text]["num_edits"],
         "first_edit_in_data": oldest_edit,
         "last_edit_in_data": last_edit,
@@ -237,9 +252,11 @@ def get_similar_users(lang="en"):
             for u in overlapping_users
         ],
     }
+    app.logger.debug(f"Finished creating get_similar_user result set in {end_timer - start_timer:0.4f} seconds")
     app.logger.debug(
         "Got %d similarity results for user %s", len(result["results"]), user_text
     )
+
     app.logger.debug("Returning result of {}".format(str(result)))
     return jsonify(result)
 
@@ -315,7 +332,7 @@ def make_mwapi_session(lang, user_agent, retries, request_host=None):
 def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followup):
     """Build a single similar-user API response"""
     r = {
-        "user_text": neighbor,
+        "user_text": neighbor.decode('utf-8'),
         "num_edits_in_data": USER_METADATA.get(neighbor, {}).get(
             "num_pages", num_pages_overlapped
         ),
@@ -330,10 +347,10 @@ def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followu
     if followup:
         r["follow-up"] = {
             "similar": "{0}?usertext={1}&k={2}".format(
-                URL_PREFIX, neighbor, num_similar
+                URL_PREFIX, neighbor.decode('utf-8'), num_similar
             ),
-            "editorinteract": EDITORINTERACT_URL.format(user_text, neighbor),
-            "interaction-timeline": INTERACTIONTIMELINE_URL.format(user_text, neighbor),
+            "editorinteract": EDITORINTERACT_URL.format(user_text.decode('utf-8'), neighbor.decode('utf-8')),
+            "interaction-timeline": INTERACTIONTIMELINE_URL.format(user_text.decode('utf-8'), neighbor.decode('utf-8')),
         }
     return r
 
