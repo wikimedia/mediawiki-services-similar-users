@@ -5,13 +5,12 @@ import distutils.util
 import logging
 import os
 import pathlib
+import time
 
 import mwapi
 import yaml
-import time
 
 from flask import (
-    Flask,
     request,
     jsonify,
     render_template,
@@ -243,7 +242,7 @@ def get_similar_users(lang="en"):
 
     app.logger.debug("Starting to create get_similar_user result set")
     result = {
-        "user_text": user_text.decode('utf-8'),
+        "user_text": user_text,
         "num_edits_in_data": USER_METADATA[user_text]["num_edits"],
         "first_edit_in_data": oldest_edit,
         "last_edit_in_data": last_edit,
@@ -807,18 +806,29 @@ def lookup_user(user_text):
     :param user_text: the username we want to analyze.
     :return:
     """
+    start_timer = time.perf_counter()
     metadata = UserMetadata.query.filter_by(user_text=user_text).first()
+    end_timer = time.perf_counter()
+
+    app.logger.debug(f"Finished lookup_user UserMetadata lookup in {end_timer - start_timer:0.4f} seconds")
 
     USER_METADATA[user_text] = metadata.__dict__ if metadata else {}
+    start_timer = time.perf_counter()
     COEDIT_DATA[user_text] = [
         (row.user_text_neighbour, row.overlap_count)
         for row in Coedit.query.filter_by(user_text=user_text).all()
     ]
+    end_timer = time.perf_counter()
+    app.logger.debug(f"Finished Coedit data filtering in {end_timer - start_timer:0.4f} seconds")
+
     TEMPORAL_DATA[user_text] = {"d": [0] * 7, "h": [0] * 24}
 
+    start_timer = time.perf_counter()
     temporal = Temporal.query.filter_by(user_text=user_text).first()
     if temporal:
         update_temporal_data(user_text, temporal.d, temporal.h, temporal.num_edits)
+    end_timer = time.perf_counter()
+    app.logger.debug(f"Finished temporal data filtering in {end_timer - start_timer:0.4f} seconds")
 
 
 def load_data(resourcedir):
@@ -890,7 +900,7 @@ def configure_app(args=None):
             # TODO load defaults
             config_yaml = yaml.safe_load(config_f)
 
-    if not "MWAPI_ORIGIN" in config_yaml:
+    if "MWAPI_ORIGIN" not in config_yaml:
         config_yaml["MWAPI_ORIGIN"] = None
 
     # for easier k8s secrets integration, allow loading of the DB URI from env
