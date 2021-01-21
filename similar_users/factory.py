@@ -1,4 +1,20 @@
+from json import JSONEncoder
 from flask import Flask
+
+
+class BinaryJSONEncoder(JSONEncoder):
+    """
+    A custom JSONEncoder that handles encoding
+    of binary objects.
+
+    Example:
+        >>> data = {"key": b"binary_value"}
+        >>> print(json.dumps(data, cls=BinaryJSONEncoder))
+    """
+    def default(self, obj):
+        if isinstance(obj, bytes):
+            return obj.decode("utf-8")
+        return JSONEncoder.default(obj)
 
 
 def create_app(config=None):
@@ -23,4 +39,7 @@ def create_app(config=None):
             extension.init_app(app=app)
 
         app.register_blueprint(api)
+        # jsonify() responses will be encoded with BinaryJSONEncoder.
+        # This is needed to allow serialisation of binary (varbinary stored) user names.
+        app.json_encoder = BinaryJSONEncoder
         return app

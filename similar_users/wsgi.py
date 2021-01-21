@@ -331,7 +331,7 @@ def make_mwapi_session(lang, user_agent, retries, request_host=None):
 def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followup):
     """Build a single similar-user API response"""
     r = {
-        "user_text": neighbor.decode('utf-8'),
+        "user_text": neighbor,
         "num_edits_in_data": USER_METADATA.get(neighbor, {}).get(
             "num_pages", num_pages_overlapped
         ),
@@ -346,10 +346,10 @@ def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followu
     if followup:
         r["follow-up"] = {
             "similar": "{0}?usertext={1}&k={2}".format(
-                URL_PREFIX, neighbor.decode('utf-8'), num_similar
+                URL_PREFIX, neighbor, num_similar
             ),
-            "editorinteract": EDITORINTERACT_URL.format(user_text.decode('utf-8'), neighbor.decode('utf-8')),
-            "interaction-timeline": INTERACTIONTIMELINE_URL.format(user_text.decode('utf-8'), neighbor.decode('utf-8')),
+            "editorinteract": EDITORINTERACT_URL.format(user_text, neighbor),
+            "interaction-timeline": INTERACTIONTIMELINE_URL.format(user_text, neighbor),
         }
     return r
 
