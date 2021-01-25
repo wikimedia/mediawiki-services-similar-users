@@ -28,7 +28,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from .models import database, UserMetadata, Coedit, Temporal
 from .factory import create_app
 from .dblock import is_used_lock as db_refresh_in_progress
-
+from .metrics import ExecutionTime
 
 # We need a Blueprint to delegate extensions initialisation
 # to a create_app() factory method. `current_app` is a proxy,
@@ -168,14 +168,13 @@ def get_similar_users(lang="en"):
             description: service unavailable
     """
 
-    start_timer = time.perf_counter()
-    user_text, num_similar, followup, error = validate_api_args(lang)
-    end_timer  = time.perf_counter()
+    with ExecutionTime() as timer:
+        user_text, num_similar, followup, error = validate_api_args(lang)
 
     if error is not None:
         app.logger.error("Got error when trying to validate API arguments: %s", error)
         return jsonify({"Error": error})
-    app.logger.debug(f"Finished validating API arguments in {end_timer - start_timer:0.4f} seconds")
+    app.logger.debug(f"Finished validating API arguments in {timer.elapsed:0.4f} seconds")
 
     # Test is the model dataset is being refreshed, and abort the request if so.a
     # We assume that refreshes are sporadic events; The refresh process won't be notified
@@ -184,43 +183,40 @@ def get_similar_users(lang="en"):
     # A database refresh can potentially start while executing this block.
 
     app.logger.debug(f"Starting database lookup")
-    start_timer = time.perf_counter()
-    if not db_refresh_in_progress():
-        try:
-            lookup_user(user_text)
-        except Exception as e:
-            app.logger.error(f"Unable to load data for user {user_text}: {e}")
-            return jsonify({"Error": e})
-        app.logger.debug("Finished user lookup")
-    else:
-        app.logger.warning("Database refresh in progress. Aborting request.")
-        return jsonify("Error:", "Database refresh in progress"), 403
-    end_timer = time.perf_counter()
-    app.logger.debug(f"Finished database lookup in {end_timer - start_timer:0.4f} seconds")
+    with ExecutionTime() as timer:
+        if not db_refresh_in_progress():
+            try:
+                lookup_user(user_text)
+            except Exception as e:
+                app.logger.error(f"Unable to load data for user {user_text}: {e}")
+                return jsonify({"Error": e})
+            app.logger.debug("Finished user lookup")
+        else:
+            app.logger.warning("Database refresh in progress. Aborting request.")
+            return jsonify("Error:", "Database refresh in progress"), 403
+    app.logger.debug(f"Finished database lookup in {timer.elapsed:0.4f} seconds")
 
     app.logger.debug("Starting to get additional edits")
-    start_timer = time.perf_counter()
-    try:
-        edits = get_additional_edits(
-            user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
-        )
-    except Exception as exc:
-        app.logger.error(
-            "Failed to get additional edits for user %s: %s", user_text, exc
-        )
-        return jsonify(
-            {"Error": f"Failed to get additional edits for user {user_text}"}
-        )
-    end_timer = time.perf_counter()
-    app.logger.debug(f"Finished getting additional edits in {end_timer - start_timer:0.4f} seconds")
+    with ExecutionTime() as timer:
+        try:
+            edits = get_additional_edits(
+                user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
+            )
+        except Exception as exc:
+            app.logger.error(
+                "Failed to get additional edits for user %s: %s", user_text, exc
+            )
+            return jsonify(
+                {"Error": f"Failed to get additional edits for user {user_text}"}
+            )
+    app.logger.debug(f"Finished getting additional edits in {timer.elapsed:0.4f} seconds")
 
     app.logger.debug("Got %d edits for user %s", len(edits) if edits else 0, user_text)
     if edits is not None:
         app.logger.debug("Started getting coedit data")
-        start_timer = time.perf_counter()
-        update_coedit_data(user_text, edits, app.config["EDIT_WINDOW"])
-        end_timer = time.perf_counter()
-        app.logger.debug(f"Finished getting coedit data in {end_timer - start_timer:0.4f} seconds")
+        with ExecutionTime() as timer:
+            update_coedit_data(user_text, edits, app.config["EDIT_WINDOW"])
+        app.logger.debug(f"Finished getting coedit data in {timer.elapsed:0.4f} seconds")
     overlapping_users = COEDIT_DATA.get(user_text, [])[:num_similar]
 
     oldest_edit = None
@@ -241,17 +237,18 @@ def get_similar_users(lang="en"):
         app.logger.debug("Didn't get an most_recent_edit for user %s", user_text)
 
     app.logger.debug("Starting to create get_similar_user result set")
-    result = {
-        "user_text": user_text,
-        "num_edits_in_data": USER_METADATA[user_text]["num_edits"],
-        "first_edit_in_data": oldest_edit,
-        "last_edit_in_data": last_edit,
-        "results": [
-            build_result(user_text, u[0], u[1], num_similar, followup)
-            for u in overlapping_users
-        ],
-    }
-    app.logger.debug(f"Finished creating get_similar_user result set in {end_timer - start_timer:0.4f} seconds")
+    with ExecutionTime() as timer:
+        result = {
+            "user_text": user_text,
+            "num_edits_in_data": USER_METADATA[user_text]["num_edits"],
+            "first_edit_in_data": oldest_edit,
+            "last_edit_in_data": last_edit,
+            "results": [
+                build_result(user_text, u[0], u[1], num_similar, followup)
+                for u in overlapping_users
+            ],
+        }
+    app.logger.debug(f"Finished creating get_similar_user result set in {timer.elapsed:0.4f} seconds")
     app.logger.debug(
         "Got %d similarity results for user %s", len(result["results"]), user_text
     )
@@ -808,29 +805,25 @@ def lookup_user(user_text):
     :param user_text: the username we want to analyze.
     :return:
     """
-    start_timer = time.perf_counter()
-    metadata = UserMetadata.query.filter_by(user_text=user_text).first()
-    end_timer = time.perf_counter()
-
-    app.logger.debug(f"Finished lookup_user UserMetadata lookup in {end_timer - start_timer:0.4f} seconds")
+    with ExecutionTime() as timer:
+        metadata = UserMetadata.query.filter_by(user_text=user_text).first()
+    app.logger.debug(f"Finished lookup_user UserMetadata lookup in {timer.elapsed:0.4f} seconds")
 
     USER_METADATA[user_text] = metadata.__dict__ if metadata else {}
-    start_timer = time.perf_counter()
-    COEDIT_DATA[user_text] = [
-        (row.user_text_neighbour, row.overlap_count)
-        for row in Coedit.query.filter_by(user_text=user_text).all()
-    ]
-    end_timer = time.perf_counter()
-    app.logger.debug(f"Finished Coedit data filtering in {end_timer - start_timer:0.4f} seconds")
+    with ExecutionTime() as timer:
+        COEDIT_DATA[user_text] = [
+            (row.user_text_neighbour, row.overlap_count)
+            for row in Coedit.query.filter_by(user_text=user_text).all()
+        ]
+    app.logger.debug(f"Finished Coedit data filtering in {timer.elapsed:0.4f} seconds")
 
     TEMPORAL_DATA[user_text] = {"d": [0] * 7, "h": [0] * 24}
 
-    start_timer = time.perf_counter()
-    temporal = Temporal.query.filter_by(user_text=user_text).first()
-    if temporal:
-        update_temporal_data(user_text, temporal.d, temporal.h, temporal.num_edits)
-    end_timer = time.perf_counter()
-    app.logger.debug(f"Finished temporal data filtering in {end_timer - start_timer:0.4f} seconds")
+    with ExecutionTime() as timer:
+        temporal = Temporal.query.filter_by(user_text=user_text).first()
+        if temporal:
+            update_temporal_data(user_text, temporal.d, temporal.h, temporal.num_edits)
+    app.logger.debug(f"Finished temporal data filtering in {timer.elapsed:0.4f} seconds")
 
 
 def load_data(resourcedir):
