@@ -451,6 +451,8 @@ def get_additional_edits(
             if len(pageids) > limit:
                 break
         # Update USER_METADATA so future calls don't need to repeat this process
+        app.logger.debug(f"Retrieved additional edits: user={user_text} num_edits={new_edits} "
+                         f"min_timestamp={min_timestamp} max_timestamp={max_timestamp}")
         USER_METADATA[user_text]["num_edits"] += new_edits
         # this is not ideal as these might not be new pages but too expensive to check and getting it wrong isn't so bad
         USER_METADATA[user_text]["num_pages"] += new_pages
