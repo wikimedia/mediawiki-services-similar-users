@@ -792,7 +792,7 @@ def load_metadata(resource_dir):
                     oldest_edit=datetime.strptime(line[5], TIME_FORMAT),
                 )
             except Exception as e:
-                app.looger.error(f"Failed to parse record {line_str}: {e}")
+                app.logger.error(f"Failed to parse record {line_str}: {e}")
             else:
                 database.session.add(user)
         database.session.commit()
@@ -911,6 +911,7 @@ def configure_app(args=None):
     if "LOG_LEVEL" in config_yaml:
         logging.basicConfig(level=logging.getLevelName(config_yaml["LOG_LEVEL"]))
 
+    app.logger.info("Finished app configuration")
     return app
 
 
