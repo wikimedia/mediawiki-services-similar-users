@@ -124,44 +124,72 @@ def get_similar_users(lang="en"):
             properties:
                 user_text:
                     type: string
+                    description: user name from the query usertext parameter. Reformatted according to mediawiki's "User" naming ckonvention.
                 num_edits_in_data:
                     type: integer
+                    description: number of in-scope edits made by the user in the data
                 first_edit_in_data:
                     type: date-time
+                    description: timestamp of the first (oldest) edit made by the user in the data
                 last_edit_in_data:
                     type: date-time
+                    description:  timestamp of the last (most recent) edit made by the user in the data
                 result:
                     type: array
                     items:
-                        $ref: '#/definitions/User'
-        User:
+                        $ref: '#/definitions/Neighbor'
+                    description: an array of users (neighbors) with similar edit history to user_text
+        Neighbor:
             type: object
             properties:
                 num_edits_in_data:
                     type: number
+                    description: number of edits made by the neighbor in the revisions time range
                 num_pages:
                     type: number
+                    description: number of pages edited by the neighbor in the revisions time range
                 edit-overlap:
                     type: number
+                    description: number of overlapping edited pages divided by number of pages edited by user_text that was queried (between 0 and 1)
                 edit-overlap-inv:
                     type: number
+                    description: number of overlapping edited pages divided by number of pages edited by the neighbor (between 0 and 1)
                 day-overlap:
-                    type: number
+                    type: object
+                    description: level of temporal overlap (editing the same days of the week) with user_text
+                    properties:
+                        cos-sim:
+                            type: number
+                            description: similarity score (cosine similarity)
+                        level:
+                            type: string
+                            description: qualitative description of the similarity score (no overlap, low, medium, high)
                 hour-overlap:
-                    type: number
+                    type: object
+                    description: level of temporal overlap (editing the same hours of the day) with user_text
+                    properties:
+                        cos-sim:
+                            type: number
+                            description: similarity score (cosine similarity)
+                        level:
+                            type: string
+                            description: qualitative description of the similarity score (no overlap, low, medium, high)
                 follow-up:
                     type: object
                     required: false
                     properties:
                         similar:
                             type: string
+                            description: the default similaruser query string for the neighbour
                         editorinteract:
                             type: string
+                            description: a link to a Editor Interaction Analyser (https://sigma.toolforge.org/editorinteract.py) report for the user and neighbor
                         interaction-timeline:
                             type: string
+                            description: a link to a Interaction Timeline (https://interaction-timeline.toolforge.org/) report for the report for the user and neighbour
     responses:
         200:
-            description: similar users json object
+            description: a SimilarUsers Json object
             schema:
                 $ref: '#/definitions/SimilarUsers'
         403:
@@ -327,6 +355,15 @@ def make_mwapi_session(lang, user_agent, retries, request_host=None):
 
 def build_result(user_text, neighbor, num_pages_overlapped, num_similar, followup):
     """Build a single similar-user API response"""
+
+
+    # Isaac, 2021-02-25: that cut-off enforcement is explicitly  in the code for edit-overlap-inv because when
+    # I use the APIs to update the edit overlap info,  I don't update the num_pages data for the neighbor
+    # (otherwise their num_pages info would reflect a mixed state where we have some but not all of their edits but
+    # don't know which we're missing). as a result,
+    # it can look like editors had more overlapping pages than they edited, which is non-sensical.
+    # it's a small compromise in accuracy but the alternative would introduce a lot more latency.
+    # this isn't the case for edit-overlap so i don't have to enforce the min(1, edit-overlap) component.
     r = {
         "user_text": neighbor,
         "num_edits_in_data": USER_METADATA.get(neighbor, {}).get(
