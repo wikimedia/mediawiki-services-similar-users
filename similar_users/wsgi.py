@@ -124,7 +124,7 @@ def get_similar_users(lang="en"):
             properties:
                 user_text:
                     type: string
-                    description: user name from the query usertext parameter. Reformatted according to mediawiki's "User" naming ckonvention.
+                    description: user name from the query usertext parameter. Reformatted according to mediawiki's "User" naming convention.
                 num_edits_in_data:
                     type: integer
                     description: number of in-scope edits made by the user in the data
@@ -144,10 +144,10 @@ def get_similar_users(lang="en"):
             properties:
                 num_edits_in_data:
                     type: number
-                    description: number of edits made by the neighbor in the revisions time range
+                    description: number of edits made by the neighbor in the data
                 num_pages:
                     type: number
-                    description: number of pages edited by the neighbor in the revisions time range
+                    description: number of pages edited by the neighbor in the data
                 edit-overlap:
                     type: number
                     description: number of overlapping edited pages divided by number of pages edited by user_text that was queried (between 0 and 1)
@@ -180,13 +180,13 @@ def get_similar_users(lang="en"):
                     properties:
                         similar:
                             type: string
-                            description: the default similaruser query string for the neighbour
+                            description: the default similaruser query string for the neighbor
                         editorinteract:
                             type: string
                             description: a link to a Editor Interaction Analyser (https://sigma.toolforge.org/editorinteract.py) report for the user and neighbor
                         interaction-timeline:
                             type: string
-                            description: a link to a Interaction Timeline (https://interaction-timeline.toolforge.org/) report for the report for the user and neighbour
+                            description: a link to a Interaction Timeline (https://interaction-timeline.toolforge.org/) report for the report for the user and neighbor
     responses:
         200:
             description: a SimilarUsers Json object
