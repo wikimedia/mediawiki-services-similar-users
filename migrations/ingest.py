@@ -221,7 +221,7 @@ def parse_args():
     """Parse command line arguments."""
 
     parser = argparse.ArgumentParser(
-        description="A script to ingest Similarusers datasets into mysql"
+        description="A script to ingest Similarusers datasets into mysql."
     )
     parser.add_argument(
         "--dry-run",
@@ -235,7 +235,7 @@ def parse_args():
         action="store",
         help="Path to the service input files",
         type=pathlib.Path,
-        default=os.path.join(os.path.dirname(__file__), "resources"),
+        default=os.environ.get("SIMILARUSERS_RESOURCE_DIR", os.path.join(os.path.dirname(__file__), "resources")),
     )
     parser.add_argument(
         "--db-connection-string",
@@ -244,7 +244,7 @@ def parse_args():
         "into a database (default: in memory sqlite) ",
         type=str,
         dest="db_connection_string",
-        default="sqlite:///:memory:",
+        default=os.environ.get("SIMILARUSERS_DB_CONNECTION_STRING", "sqlite:///:memory:"),
     )
     parser.add_argument(
         "--create-tables",
@@ -259,7 +259,7 @@ def parse_args():
         help="Number of rows to insert in bulk. Default: 1000 rows/batch",
         dest="batch_size",
         type=int,
-        default=1000
+        default=os.environ.get("SIMILARUSERS_BATCH_SIZE", 1000)
     )
     parser.add_argument(
         "--throttle-ms",
@@ -267,7 +267,7 @@ def parse_args():
         help="Add a delay (ms) between inserts, to throttle db writes. Default: 50ms",
         dest="throttle_ms",
         type=int,
-        default=50
+        default=os.environ.get("SIMILARUSERS_THROTTLE_MS", 50)
     )
     parser.add_argument(
         "--verbose",
