@@ -32,3 +32,13 @@ variants:
   production:
     copies: [prep]
     node: { env: production }
+  apidocs:
+    includes: [build]
+  htmldocs:
+    base: docker-registry.wikimedia.org/buster-nodejs10-devel:0.0.1-s1
+    copies:
+      - from: apidocs
+        source: /srv/service/doc
+        destination: /srv/service/doc
+    node: {requirements: [package.json]}
+    runs: { insecurely: false }

@@ -7,10 +7,26 @@ This repository has two primary components: the API endpoint (on Cloud VPS) and 
 
 Locally, you can run an instance of the service reflecting the current state of the repo by running `make docker`. This requires [Blubber](https://wikitech.wikimedia.org/wiki/Blubber).
 
+We use [Blubber](https://wikitech.wikimedia.org/wiki/Blubber/Download) to create `Dockerfile`s. 
+Installation documentation can be found at https://wikitech.wikimedia.org/wiki/Blubber/Download.
+
 ## API
 See [the API template](https://github.com/wikimedia/research-api-endpoint-template) for more details on how to start and update the instance, though updates for this repository are much more manual than desirable at the moment until the config is updated. The instance has a nginx web server that sends requests via uWSGI to a Flask app.
 
+### Documentation
 Swagger documentation is available at the `/apidocs` endpoint.
+
+A Json OpenAPI spec file can be generated with:
+```bash
+make apidocs
+```
+
+A zero-dependency HTML-file documenting the api can be generated with
+```bash
+make htmldocs
+```
+The output files of both `apidocs` and `htmldocs` commands will be available under `doc/build`.
+
 
 ### Privacy / Access
 The default logging by nginx builds an access log located at `/var/log/nginx/access.log` that logs IP, timestamp, referer, request, and user_agent information.
