@@ -145,9 +145,6 @@ def get_similar_users(lang="en"):
                 num_edits_in_data:
                     type: number
                     description: number of edits made by the neighbor in the data
-                num_pages:
-                    type: number
-                    description: number of pages edited by the neighbor in the data
                 edit-overlap:
                     type: number
                     description: number of overlapping edited pages divided by number of pages edited by user_text that was queried (between 0 and 1)
