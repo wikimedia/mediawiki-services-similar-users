@@ -541,7 +541,7 @@ def update_coedit_data(user_text, new_edits, k, lang="en", session=None, limit=2
         for r in result:
             revs = r["query"]["pages"][0].get("revisions", [])
             user_edit_indices = [
-                i for i, e in enumerate(revs) if e["user"] == user_text
+                i for i, e in enumerate(revs) if ("user" in e and e["user"] == user_text)
             ]
             for idx in user_edit_indices:
                 for e in revs[max(0, idx - k) : idx + k]:
