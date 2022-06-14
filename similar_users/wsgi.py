@@ -225,7 +225,9 @@ def get_similar_users(lang="en"):
     with ExecutionTime() as timer:
         try:
             edits = get_additional_edits(
-                user_text, last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"]
+                user_text,
+                last_edit_timestamp=USER_METADATA[user_text]["most_recent_edit"],
+                limit=app.config["MAX_PAGES_PER_LOOKUP"]
             )
         except Exception as exc:
             app.logger.error(
@@ -423,7 +425,7 @@ def get_temporal_overlap(u1, u2, k):
 
 
 def get_additional_edits(
-    user_text, last_edit_timestamp=None, lang="en", limit=1000, session=None
+    user_text, last_edit_timestamp=None, lang="en", limit=50, session=None
 ):
     """Gather edits made by a user since last data dumps -- e.g., October edits if dumps end of September dumps used."""
     if last_edit_timestamp:
@@ -441,6 +443,9 @@ def get_additional_edits(
         )
 
     # generate list of all revisions since user's last recorded revision
+    # API response will be ordered from oldest to most recent page edited but groups revisions by page
+    # An arvlimit of 500 applies to revision count and could be distributed over any number of pages
+    # which is why we have to set it so high even though we will only keep the first `limit` pages
     result = session.get(
         action="query",
         list="allrevisions",
@@ -479,7 +484,10 @@ def get_additional_edits(
                     else:
                         max_timestamp = max(max_timestamp, dtts)
                         min_timestamp = min(min_timestamp, dtts)
-            if len(pageids) > limit:
+                # a little hacky to break out of nested for loop but necessary without moving loop to its own function
+                if new_pages >= limit:
+                    break
+            if new_pages >= limit:
                 break
         # Update USER_METADATA so future calls don't need to repeat this process
         app.logger.debug(f"Retrieved additional edits: user={user_text} num_edits={new_edits} "
