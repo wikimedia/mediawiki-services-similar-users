@@ -524,6 +524,7 @@ def update_coedit_data(user_text, new_edits, k, lang="en", session=None, limit=2
     overlapping_users = {}
     for pid in new_edits:
         # generate list of all revisions since user's last recorded revision
+        # (edits by hidden users will be filtered out)
         result = session.get(
             action="query",
             prop="revisions",
@@ -545,7 +546,7 @@ def update_coedit_data(user_text, new_edits, k, lang="en", session=None, limit=2
             ]
             for idx in user_edit_indices:
                 for e in revs[max(0, idx - k) : idx + k]:
-                    if e["user"] == user_text:
+                    if "user" not in e or e["user"] == user_text:
                         continue
                     if e["user"] not in overlapping_users:
                         overlapping_users[e["user"]] = set()
