@@ -22,5 +22,7 @@ TEMPORAL_OFFSET: '(-1, 0, 1)'
 NAMESPACES: [0, 1, 118]
 EDIT_WINDOW: 5
 
+# These are dummy values, not used in production. Change them for any
+# test instances.
 BASIC_AUTH_USERNAME: 'changeme'
 BASIC_AUTH_PASSWORD: 'changemepls'
