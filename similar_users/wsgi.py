@@ -14,7 +14,6 @@ from flask import (
     request,
     jsonify,
     render_template,
-    abort,
     Blueprint,
     current_app,
 )
@@ -82,7 +81,7 @@ def index():
     if app.config.get("ENABLE_UI", False):
         return render_template("index.html")
     else:
-        return abort(403, description="UI disabled")
+        return jsonify({"Error": "UI disabled"}), 403
 
 
 @api.route("/similarusers", methods=["GET"])
@@ -718,9 +717,9 @@ def validate_api_args(lang):
     followup = "followup" in request.args
 
     if not user_text:
-        abort(422, "No usertext provided")
+        return jsonify({"Error": "No usertext provided"}), 422
     if not num_similar:
-        abort(422, "No k specified")
+        return jsonify({"Error", "No k specified"}), 422
 
     error = None
     try:
