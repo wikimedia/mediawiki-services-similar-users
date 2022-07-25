@@ -218,7 +218,7 @@ def get_similar_users(lang="en"):
             app.logger.debug("Finished user lookup")
         else:
             app.logger.warning("Database refresh in progress. Aborting request.")
-            return jsonify("Error:", "Database refresh in progress"), 403
+            return jsonify({"Error": "Database refresh in progress"}), 403
     app.logger.debug(f"Finished database lookup in {timer.elapsed:0.4f} seconds")
 
     app.logger.debug("Starting to get additional edits")
