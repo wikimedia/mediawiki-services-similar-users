@@ -196,8 +196,8 @@ def get_similar_users(lang="en"):
         user_text, num_similar, followup, error = validate_api_args(lang)
 
     if error is not None:
-        app.logger.error("Got error when trying to validate API arguments: %s", error)
-        return jsonify({"Error": error})
+        app.logger.error("Got error when trying to validate API arguments: %s", error["Error"])
+        return jsonify(error)
     app.logger.debug(f"Finished validating API arguments in {timer.elapsed:0.4f} seconds")
 
     # Test is the model dataset is being refreshed, and abort the request if so.a
@@ -662,9 +662,12 @@ def check_user_text(user_text, lang="en"):
                 "Received request for user %s when they don't appear to have an enwiki account",
                 user_text,
             )
-            return "User `{0}` does not appear to have an account in English Wikipedia.".format(
-                user_text
-            )
+            return {
+                "Error": "User `{0}` does not appear to have an account in English Wikipedia.".format(
+                    user_text
+                ),
+                "error-type": "user-no-account"
+            }
         # anon (has contribs but not a valid account name)
         elif "invalid" in result["query"]["users"][0]:
             USER_METADATA[user_text] = {
@@ -684,9 +687,12 @@ def check_user_text(user_text, lang="en"):
                     "Received request for user %s which is a bot account - out of scope",
                     user_text,
                 )
-                return "User `{0}` is a bot and therefore out of scope.".format(
-                    user_text
-                )
+                return {
+                    "Error": "User `{0}` is a bot and therefore out of scope.".format(
+                        user_text
+                    ),
+                    "error-type": "user-bot"
+                }
             # exists and is user but wasn't in original dataset
             else:
                 USER_METADATA[user_text] = {
@@ -708,9 +714,12 @@ def check_user_text(user_text, lang="en"):
         "Received request for user %s but user does not have an account or edits in scope on enwiki",
         user_text,
     )
-    return "User `{0}` does not appear to have an account (or edits in scope) in English Wikipedia.".format(
-        user_text
-    )
+    return {
+        "Error": "User `{0}` does not appear to have an account (or edits in scope) in English Wikipedia.".format(
+            user_text
+        ),
+        "error-type": "user-no-edits"
+    }
 
 
 def validate_api_args(lang):
@@ -738,7 +747,9 @@ def validate_api_args(lang):
         user_text = user_text[0].upper() + user_text[1:]
         error = check_user_text(user_text, lang)
     else:
-        error = 'missing user_text -- e.g., "Isaac (WMF)" for https://en.wikipedia.org/wiki/User:Isaac_(WMF)'
+        error = {
+            "Error": 'missing user_text -- e.g., "Isaac (WMF)" for https://en.wikipedia.org/wiki/User:Isaac_(WMF)'
+        }
     return user_text, num_similar, followup, error
 
 
