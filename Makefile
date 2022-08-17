@@ -23,7 +23,7 @@ test:	venv
 	. venv/bin/activate; pytest --cov similar_users
 
 doc_builddir:
-	rm -r ${doc_builddir}
+	rm -fr ${doc_builddir}
 	mkdir -p ${doc_builddir}
 
 apidocs: doc_builddir
@@ -34,7 +34,6 @@ apidocs: doc_builddir
 
 htmldocs: apidocs
 	blubber .pipeline/blubber.yaml htmldocs | docker build -t ${htmldocs_image} -f - .
-	$(eval container_id = $(shell docker run -d ${htmldocs_image} npx redoc-cli bundle ${apidocs_json} --output ${apidocs_html})) 
+	$(eval container_id = $(shell docker run -d ${htmldocs_image} npx redoc-cli bundle ${apidocs_json} --output ${apidocs_html}))
 	docker wait ${container_id}
 	docker cp ${container_id}:${blubber_lives_in}/${apidocs_html} doc/build/
-
